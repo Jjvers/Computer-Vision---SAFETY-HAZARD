@@ -129,6 +129,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/")
+def read_root():
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/docs")
+
 
 # ============================================================
 # HELPER FUNCTIONS
