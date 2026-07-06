@@ -22,5 +22,8 @@ RUN pip install --no-cache-dir -r requirements-railway.txt
 COPY server.py .
 COPY best.pt .
 
-# Railway provides PORT automatically, which is read in server.py
-CMD ["python", "server.py"]
+# Force Railway to route traffic to port 8000
+EXPOSE 8000
+
+# Run uvicorn directly on port 8000
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
