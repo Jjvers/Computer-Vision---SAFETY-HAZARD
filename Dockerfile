@@ -22,5 +22,5 @@ RUN pip install --no-cache-dir -r requirements-railway.txt
 COPY server.py .
 COPY best.pt .
 
-# Railway provides $PORT automatically
-CMD uvicorn server:app --host 0.0.0.0 --port $PORT
+# Railway provides PORT automatically, which is read in server.py
+CMD ["python", "server.py"]
