@@ -1,0 +1,12 @@
+# Requirements for Railway deployment (CPU-only, lighter)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+torchvision
+
+fastapi>=0.104.0
+uvicorn>=0.24.0
+python-multipart>=0.0.6
+ultralytics>=8.3.0
+sahi>=0.11.0
+Pillow>=10.0.0
+opencv-python-headless>=4.8.0

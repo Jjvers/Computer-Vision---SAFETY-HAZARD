@@ -1,0 +1,12 @@
+# Ignore large/unnecessary files saat deploy ke Railway
+dataset/
+dataset.zip
+runs/
+__pycache__/
+*.pyc
+.git/
+.env
+*.ipynb
+run_inference.py
+sahi_detector.py
+requirements.txt

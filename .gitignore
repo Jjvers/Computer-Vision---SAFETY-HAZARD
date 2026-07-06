@@ -1,0 +1,13 @@
+# Ignore everything by default
+*
+
+# Only include files needed for Railway deployment
+!server.py
+!Dockerfile
+!requirements-railway.txt
+!.dockerignore
+!.gitattributes
+!.gitignore
+
+# best.pt will be tracked by Git LFS
+!best.pt
