@@ -48,7 +48,7 @@ SAHI_OVERLAP_RATIO = 0.3
 # Class info
 CLASS_NAMES = [
     "person", "helmet", "safety_vest", "wet_floor",
-    "blocked_walkway", "exposed_cable", "chemical_spill"
+    "blocked_walkway", "exposed_cable"
 ]
 
 CLASS_COLORS = {
@@ -57,8 +57,7 @@ CLASS_COLORS = {
     "safety_vest": "#FFE66D",
     "wet_floor": "#45B7D1",
     "blocked_walkway": "#F7934C",
-    "exposed_cable": "#A855F7",
-    "chemical_spill": "#EF4444",
+    "exposed_cable": "#A855F7"
 }
 
 # ============================================================
@@ -110,8 +109,8 @@ app = FastAPI(
     title="EHSS Safety Hazard Detection API",
     description=(
         "API untuk deteksi hazard keselamatan kerja menggunakan YOLOv11 + SAHI.\n\n"
-        "**7 Kelas yang dideteksi:**\n"
-        "person, helmet, safety_vest, wet_floor, blocked_walkway, exposed_cable, chemical_spill\n\n"
+        "**6 Kelas yang dideteksi:**\n"
+        "person, helmet, safety_vest, wet_floor, blocked_walkway, exposed_cable\n\n"
         "**Endpoints:**\n"
         "- `POST /detect` — Deteksi standar (cepat)\n"
         "- `POST /detect-sahi` — Deteksi dengan SAHI (lebih akurat untuk objek kecil)\n"
