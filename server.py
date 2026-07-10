@@ -24,8 +24,10 @@ import base64
 import tempfile
 from pathlib import Path
 from typing import Optional
+import urllib.request
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query
+from pydantic import BaseModel
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -145,9 +147,9 @@ def format_detections(boxes, model):
         conf = float(box.conf[0])
         x1, y1, x2, y2 = box.xyxy[0].tolist()
         detections.append({
-            "class_name": model.names[cls_id],
+            "label": model.names[cls_id],
             "class_id": cls_id,
-            "confidence": round(conf, 4),
+            "confidence_score": round(conf, 4),
             "bbox": {
                 "x1": round(x1, 2),
                 "y1": round(y1, 2),
@@ -166,9 +168,9 @@ def format_sahi_detections(sahi_result):
     for pred in sahi_result.object_prediction_list:
         bbox = pred.bbox.to_xyxy()
         detections.append({
-            "class_name": pred.category.name,
+            "label": pred.category.name,
             "class_id": pred.category.id,
-            "confidence": round(pred.score.value, 4),
+            "confidence_score": round(pred.score.value, 4),
             "bbox": {
                 "x1": round(bbox[0], 2),
                 "y1": round(bbox[1], 2),
@@ -185,7 +187,7 @@ def make_summary(detections):
     """Hitung summary per kelas."""
     summary = {}
     for d in detections:
-        name = d["class_name"]
+        name = d["label"]
         summary[name] = summary.get(name, 0) + 1
     return summary
 
@@ -200,7 +202,7 @@ def draw_boxes_on_image(img: Image.Image, detections: list) -> Image.Image:
         font = ImageFont.load_default()
 
     for det in detections:
-        color = CLASS_COLORS.get(det["class_name"], "#FFFFFF")
+        color = CLASS_COLORS.get(det["label"], "#FFFFFF")
         b = det["bbox"]
         x1, y1, x2, y2 = b["x1"], b["y1"], b["x2"], b["y2"]
 
@@ -208,7 +210,7 @@ def draw_boxes_on_image(img: Image.Image, detections: list) -> Image.Image:
         draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
 
         # Label
-        label = f"{det['class_name']} {det['confidence']:.0%}"
+        label = f"{det['label']} {det['confidence_score']:.0%}"
         text_bbox = draw.textbbox((x1, y1 - 20), label, font=font)
         draw.rectangle(text_bbox, fill=color)
         draw.text((x1, y1 - 20), label, fill="black", font=font)
@@ -223,6 +225,18 @@ async def save_upload_temp(image: UploadFile) -> str:
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp.write(content)
         return tmp.name
+
+async def download_image_temp(url: str) -> str:
+    """Download image dari URL ke file temp."""
+    suffix = ".jpg"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req) as response:
+            tmp.write(response.read())
+        return tmp.name
+
+class DetectRequest(BaseModel):
+    image_url: str
 
 
 # ============================================================
@@ -244,7 +258,7 @@ async def health_check():
 
 @app.post("/detect")
 async def detect(
-    image: UploadFile = File(..., description="Upload gambar (JPG/PNG)"),
+    request: DetectRequest,
     confidence: float = Query(
         default=CONFIDENCE_THRESHOLD,
         ge=0.01, le=1.0,
@@ -254,10 +268,13 @@ async def detect(
     """
     🔍 Deteksi standar (tanpa SAHI) — **Cepat**
     
-    Upload gambar, dapat JSON hasil deteksi.
+    Kirim JSON body dengan image_url, dapat JSON hasil deteksi.
     Cocok untuk gambar dengan objek berukuran normal.
     """
-    tmp_path = await save_upload_temp(image)
+    try:
+        tmp_path = await download_image_temp(request.image_url)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Gagal download gambar dari URL: {str(e)}")
 
     try:
         start = time.time()
