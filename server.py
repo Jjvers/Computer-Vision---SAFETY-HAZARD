@@ -167,17 +167,22 @@ def format_sahi_detections(sahi_result):
     detections = []
     for pred in sahi_result.object_prediction_list:
         bbox = pred.bbox.to_xyxy()
+        # Convert numpy types ke Python native agar JSON serializable
+        x1 = float(bbox[0])
+        y1 = float(bbox[1])
+        x2 = float(bbox[2])
+        y2 = float(bbox[3])
         detections.append({
-            "label": pred.category.name,
-            "class_id": pred.category.id,
-            "confidence_score": round(pred.score.value, 4),
+            "label": str(pred.category.name),
+            "class_id": int(pred.category.id),
+            "confidence_score": round(float(pred.score.value), 4),
             "bbox": {
-                "x1": round(bbox[0], 2),
-                "y1": round(bbox[1], 2),
-                "x2": round(bbox[2], 2),
-                "y2": round(bbox[3], 2),
-                "width": round(bbox[2] - bbox[0], 2),
-                "height": round(bbox[3] - bbox[1], 2),
+                "x1": round(x1, 2),
+                "y1": round(y1, 2),
+                "x2": round(x2, 2),
+                "y2": round(y2, 2),
+                "width": round(x2 - x1, 2),
+                "height": round(y2 - y1, 2),
             }
         })
     return detections
