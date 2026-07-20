@@ -49,17 +49,19 @@ SAHI_OVERLAP_RATIO = 0.3
 
 # Class info
 CLASS_NAMES = [
-    "person", "helmet", "safety_vest", "wet_floor",
-    "blocked_walkway", "exposed_cable"
+    "person", "trolley", "phone", "apron", 
+    "safety_glasses", "safety_gloves", "safety_boots", "safety_helmet"
 ]
 
 CLASS_COLORS = {
     "person": "#FF6B6B",
-    "helmet": "#4ECDC4",
-    "safety_vest": "#FFE66D",
-    "wet_floor": "#45B7D1",
-    "blocked_walkway": "#F7934C",
-    "exposed_cable": "#A855F7"
+    "trolley": "#F7934C",
+    "phone": "#A855F7",
+    "apron": "#45B7D1",
+    "safety_glasses": "#4ECDC4",
+    "safety_gloves": "#FFE66D",
+    "safety_boots": "#FF9F1C",
+    "safety_helmet": "#2EC4B6"
 }
 
 # ============================================================
@@ -139,6 +141,61 @@ def read_root():
 # ============================================================
 # HELPER FUNCTIONS
 # ============================================================
+def check_intersection(box1, box2):
+    """Check if two bounding boxes intersect."""
+    return not (box1["x2"] < box2["x1"] or 
+                box1["x1"] > box2["x2"] or 
+                box1["y2"] < box2["y1"] or 
+                box1["y1"] > box2["y2"])
+
+def analyze_hazards(detections, img_width, img_height, is_walking=True):
+    """Analyze custom business logic (Phone usage & Lane violation)."""
+    hazards = []
+    
+    # Virtual Lane: 20% to 80% of width is the safe walkway
+    safe_lane_x1 = img_width * 0.2
+    safe_lane_x2 = img_width * 0.8
+    
+    persons = [d for d in detections if d["label"] == "person"]
+    phones = [d for d in detections if d["label"] == "phone"]
+    trolleys = [d for d in detections if d["label"] == "trolley"]
+
+    for p in persons:
+        # Check Phone While Walking
+        for ph in phones:
+            if check_intersection(p["bbox"], ph["bbox"]):
+                hazards.append({
+                    "type": "Phone While Walking",
+                    "severity": "High",
+                    "description": "Person using phone while walking.",
+                    "bbox": p["bbox"],
+                    "note": "Allowed if the person is stopped." if is_walking else "Person is not walking, phone usage allowed."
+                })
+                break
+                
+        # Check Lane Violation
+        cx = (p["bbox"]["x1"] + p["bbox"]["x2"]) / 2
+        if cx < safe_lane_x1 or cx > safe_lane_x2:
+            hazards.append({
+                "type": "Lane Violation",
+                "severity": "Medium",
+                "description": "Person walking outside designated safe walkway.",
+                "bbox": p["bbox"]
+            })
+            
+    # Check Trolley blocking walkway
+    for t in trolleys:
+        cx = (t["bbox"]["x1"] + t["bbox"]["x2"]) / 2
+        if safe_lane_x1 <= cx <= safe_lane_x2:
+            hazards.append({
+                "type": "Walkway Blocked",
+                "severity": "Medium",
+                "description": "Trolley detected inside the safe walkway.",
+                "bbox": t["bbox"]
+            })
+            
+    return hazards
+
 def format_detections(boxes, model):
     """Format YOLO results ke list of dict."""
     detections = []
@@ -197,7 +254,7 @@ def make_summary(detections):
     return summary
 
 
-def draw_boxes_on_image(img: Image.Image, detections: list) -> Image.Image:
+def draw_boxes_on_image(img: Image.Image, detections: list, hazards: list = None) -> Image.Image:
     """Gambar bounding box pada image."""
     draw = ImageDraw.Draw(img)
     
@@ -205,6 +262,15 @@ def draw_boxes_on_image(img: Image.Image, detections: list) -> Image.Image:
         font = ImageFont.truetype("arial.ttf", 16)
     except (IOError, OSError):
         font = ImageFont.load_default()
+
+    # Draw Virtual Lane (semi-transparent green overlay)
+    safe_lane_x1 = img.width * 0.2
+    safe_lane_x2 = img.width * 0.8
+    overlay = Image.new('RGBA', img.size, (0, 0, 0, 0))
+    overlay_draw = ImageDraw.Draw(overlay)
+    overlay_draw.rectangle([safe_lane_x1, 0, safe_lane_x2, img.height], fill=(0, 255, 0, 30))
+    img = Image.alpha_composite(img.convert('RGBA'), overlay).convert('RGB')
+    draw = ImageDraw.Draw(img)
 
     for det in detections:
         color = CLASS_COLORS.get(det["label"], "#FFFFFF")
@@ -219,6 +285,19 @@ def draw_boxes_on_image(img: Image.Image, detections: list) -> Image.Image:
         text_bbox = draw.textbbox((x1, y1 - 20), label, font=font)
         draw.rectangle(text_bbox, fill=color)
         draw.text((x1, y1 - 20), label, fill="black", font=font)
+
+    if hazards:
+        for haz in hazards:
+            if haz["type"] == "Lane Violation" or haz["type"] == "Walkway Blocked":
+                color = "red" if haz["type"] == "Lane Violation" else "orange"
+                b = haz["bbox"]
+                draw.rectangle([b["x1"], b["y1"], b["x2"], b["y2"]], outline=color, width=5)
+                draw.text((b["x1"], b["y1"] - 40), haz["type"], fill=color, font=font)
+            elif haz["type"] == "Phone While Walking":
+                color = "red"
+                b = haz["bbox"]
+                draw.rectangle([b["x1"], b["y1"], b["x2"], b["y2"]], outline=color, width=5)
+                draw.text((b["x1"], b["y1"] - 40), "WARNING: Phone Usage", fill=color, font=font)
 
     return img
 
@@ -242,6 +321,7 @@ async def download_image_temp(url: str) -> str:
 
 class DetectRequest(BaseModel):
     image_url: str
+    is_walking: bool = True
 
 
 # ============================================================
@@ -290,6 +370,9 @@ async def detect(
         if results and len(results) > 0:
             detections = format_detections(results[0].boxes, yolo_model)
 
+        img_width, img_height = Image.open(tmp_path).size
+        hazards = analyze_hazards(detections, img_width, img_height, is_walking=request.is_walking)
+
         return {
             "success": True,
             "mode": "standard",
@@ -298,6 +381,7 @@ async def detect(
             "confidence_threshold": confidence,
             "summary": make_summary(detections),
             "detections": detections,
+            "hazards": hazards
         }
     finally:
         os.unlink(tmp_path)
@@ -349,6 +433,9 @@ async def detect_sahi(
 
         detections = format_sahi_detections(result)
 
+        img_width, img_height = Image.open(tmp_path).size
+        hazards = analyze_hazards(detections, img_width, img_height, is_walking=True)
+
         return {
             "success": True,
             "mode": "sahi",
@@ -358,6 +445,7 @@ async def detect_sahi(
             "slice_size": slice_size,
             "summary": make_summary(detections),
             "detections": detections,
+            "hazards": hazards
         }
     finally:
         os.unlink(tmp_path)
@@ -396,7 +484,8 @@ async def detect_visual(
 
         # Draw boxes
         img = Image.open(tmp_path).convert("RGB")
-        img = draw_boxes_on_image(img, detections)
+        hazards = analyze_hazards(detections, img.width, img.height, is_walking=True)
+        img = draw_boxes_on_image(img, detections, hazards)
 
         # Return as PNG
         buffer = io.BytesIO()
@@ -454,7 +543,8 @@ async def detect_full(
 
         # Draw boxes
         img = Image.open(tmp_path).convert("RGB")
-        img = draw_boxes_on_image(img, detections)
+        hazards = analyze_hazards(detections, img.width, img.height, is_walking=True)
+        img = draw_boxes_on_image(img, detections, hazards)
 
         # Convert to base64
         buffer = io.BytesIO()
@@ -468,6 +558,7 @@ async def detect_full(
             "inference_time_ms": round(elapsed * 1000, 1),
             "summary": make_summary(detections),
             "detections": detections,
+            "hazards": hazards,
             "annotated_image": f"data:image/jpeg;base64,{img_base64}",
         }
     finally:
